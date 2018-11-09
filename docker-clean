@@ -1,0 +1,109 @@
+#!/bin/bash
+
+docker_image () {
+
+	cpt=0
+	maximum_depth=5
+	found=0
+
+	if [[ "$2" -eq 1 ]]
+	then
+		echo "Dry run mode activated"
+	else
+		echo "Will really run docker rmi"
+		echo "Please, CTRL-C to escape"
+		echo "Sleeping 2 seconds"
+		sleep 2
+	fi
+
+	echo Will clean docker images containing $1 
+
+	echo "- *$1*"
+	search="docker images --filter=reference='*$1*' --format "{{.Repository}}:{{.Tag}}""
+	images=$(eval $search)
+
+	#echo $search
+	if [ -n "$images" ]
+	then 
+		found=1
+
+		if [[ "$2" -eq 1 ]]
+		then
+			echo "[DRY RUN] Delete images $images"
+		else
+			echo "Will really run docker rmi"
+			docker rmi $(eval $search)
+		fi
+	fi
+
+	# Si plus d'images OU que le cpt n'a pas atteint la profondeur minimum
+	while [[ ( -n "$images" ) || ( "$found" -eq 0 ) ]]; do
+
+		cpt=$((cpt+1))
+		
+		before=$(eval printf '*/%.0s' {1..$cpt})*$1*
+		echo "- $before"
+		searchbefore="docker images --filter=reference='$before' --format "{{.Repository}}:{{.Tag}}""
+		imagesbefore=$(eval $searchbefore)
+		#echo $searchbefore
+
+		if [ -n "$imagesbefore" ]
+		then 
+			found=1
+
+			if [[ "$2" -eq 1 ]]
+			then
+				echo "[DRY RUN] Delete images $imagesbefore"
+			else
+				echo "Will really run docker rmi"
+				docker rmi $(eval $searchbefore)
+			fi
+		fi
+
+		after=*$1*$(eval printf '/*%.0s' {1..$cpt})
+		echo "- $after"
+		searchafter="docker images --filter=reference='$after' --format "{{.Repository}}:{{.Tag}}""
+		imagesafter=$(eval $searchafter)
+		#echo $searchafter
+
+		if [ -n "$imagesafter" ]
+		then 
+			found=1
+
+			if [[ "$2" -eq 1 ]]
+			then
+				echo "[DRY RUN] Delete images $imagesafter"
+			else
+				echo "Will really run docker rmi"
+				docker rmi $(eval $searchafter)
+			fi
+		fi
+
+		if [[ "$cpt" -eq "$maximum_depth" ]]
+		then
+			break
+		fi
+	done
+
+	if [[ "$found" -eq 0 ]]
+	then 
+		echo "No images correspond to search"
+	else
+		echo "No more image to delete"
+	fi
+}
+
+dryrun=0
+
+if [[ "${@: -1}" == "--dry-run" ]]
+then
+	dryrun=1
+	set -- "${@:1:$(($#-1))}"
+fi
+
+while [[ $# -gt 0 ]]
+do
+	docker_image $1 $dryrun
+	shift
+done
+
